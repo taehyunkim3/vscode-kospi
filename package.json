@@ -1,8 +1,8 @@
 {
-  "name": "vscode-stock",
-  "displayName": "vscode stock",
+  "name": "vscode-kospi",
+  "displayName": "vscode kospi",
   "description": "VS Code 사이드바에서 주가와 지수를 텍스트로 보여주는 확장입니다.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "taehyunkim3",
   "pricing": "Free",
   "engines": {
@@ -13,9 +13,13 @@
   ],
   "activationEvents": [
     "onView:runtimeFeedView",
+    "onView:runtimeNewsView",
     "onCommand:runtimeFeed.refresh",
+    "onCommand:runtimeFeed.refreshNews",
     "onCommand:runtimeFeed.addWatchSymbol",
-    "onCommand:runtimeFeed.removeWatchSymbol"
+    "onCommand:runtimeFeed.removeWatchSymbol",
+    "onCommand:runtimeFeed.selectSymbol",
+    "onCommand:runtimeFeed.openNewsLink"
   ],
   "main": "./dist/extension.js",
   "scripts": {
@@ -63,11 +67,24 @@
     "package.json"
   ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vscodeKospi",
+          "title": "vscode kospi",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
     "views": {
-      "explorer": [
+      "vscodeKospi": [
         {
           "id": "runtimeFeedView",
-          "name": "vscode stock"
+          "name": "시장 시세"
+        },
+        {
+          "id": "runtimeNewsView",
+          "name": "주요 뉴스"
         }
       ]
     },
@@ -83,9 +100,22 @@
         "icon": "$(add)"
       },
       {
+        "command": "runtimeFeed.refreshNews",
+        "title": "Refresh News",
+        "icon": "$(radio-tower)"
+      },
+      {
         "command": "runtimeFeed.removeWatchSymbol",
         "title": "Remove Relay Target",
         "icon": "$(trash)"
+      },
+      {
+        "command": "runtimeFeed.selectSymbol",
+        "title": "Select News Target"
+      },
+      {
+        "command": "runtimeFeed.openNewsLink",
+        "title": "Open News Link"
       }
     ],
     "menus": {
@@ -104,6 +134,11 @@
           "command": "runtimeFeed.removeWatchSymbol",
           "when": "view == runtimeFeedView",
           "group": "navigation@4"
+        },
+        {
+          "command": "runtimeFeed.refreshNews",
+          "when": "view == runtimeNewsView",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
