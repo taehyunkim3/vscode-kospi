@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 
 const CONFIG_NAMESPACE = 'runtimeFeed';
 const VIEW_ID = 'runtimeFeedView';
-const YAHOO_QUOTE_ENDPOINT = 'https://query1.finance.yahoo.com/v7/finance/quote';
+const YAHOO_CHART_ENDPOINT = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const YAHOO_SEARCH_ENDPOINT = 'https://query1.finance.yahoo.com/v1/finance/search';
 
 type SectionKey = 'runtime.pipe' | 'core.indices' | 'fx.bridge' | 'watch.targets';
@@ -33,9 +33,29 @@ interface YahooQuote {
   readonly currency?: string;
 }
 
-interface YahooQuoteResponse {
-  readonly quoteResponse?: {
-    readonly result?: YahooQuote[];
+interface YahooChartMeta {
+  readonly symbol?: string;
+  readonly shortName?: string;
+  readonly longName?: string;
+  readonly regularMarketPrice?: number;
+  readonly previousClose?: number;
+  readonly chartPreviousClose?: number;
+  readonly regularMarketTime?: number;
+  readonly currency?: string;
+  readonly exchangeName?: string;
+}
+
+interface YahooChartResult {
+  readonly meta?: YahooChartMeta;
+}
+
+interface YahooChartResponse {
+  readonly chart?: {
+    readonly result?: YahooChartResult[];
+    readonly error?: {
+      readonly code?: string;
+      readonly description?: string;
+    };
   };
 }
 
@@ -86,6 +106,7 @@ const FX_DEFINITIONS: readonly QuoteDefinition[] = [
 
 class FeedNode extends vscode.TreeItem {
   public children: FeedNode[] = [];
+  public watchEntry?: string;
 
   public constructor(
     label: string,
@@ -144,6 +165,7 @@ class RuntimeFeedProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
       this.snapshot = {
         quotes,
         updatedAt: new Date(),
+        errorMessage: undefined,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown upstream failure';
@@ -194,7 +216,7 @@ class RuntimeFeedProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
         this.isRefreshing ? 'pulling upstream' : this.snapshot.errorMessage ? 'degraded' : 'online',
         buildStatusTooltip(this.snapshot, this.isRefreshing),
       ),
-      this.buildLeaf('transport.source', 'yahoo.quote.v7', 'Public Yahoo Finance quote endpoint'),
+      this.buildLeaf('transport.source', 'yahoo.chart.v8', 'Public Yahoo Finance chart endpoint'),
       this.buildLeaf('transport.mode', getAutoRefreshSeconds() > 0 ? 'interval' : 'manual', 'Polling mode'),
       this.buildLeaf(
         'transport.updated_at',
@@ -232,6 +254,16 @@ class RuntimeFeedProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
 
   private buildQuoteNode(definition: QuoteDefinition): FeedNode {
     const item = new FeedNode(resolveQuoteLabel(definition), vscode.TreeItemCollapsibleState.None);
+    if (definition.section === 'watch.targets') {
+      item.contextValue = 'watchTarget';
+      item.watchEntry = `${definition.explicitLabel}=${definition.symbol}`;
+      item.command = {
+        command: 'runtimeFeed.removeWatchSymbol',
+        title: 'Remove Relay Target',
+        arguments: [item],
+      };
+    }
+
     const quote = this.snapshot.quotes.get(definition.symbol);
 
     if (!quote) {
@@ -327,7 +359,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await configuration.update('watchlist', [...watchlist, candidate], vscode.ConfigurationTarget.Global);
       await provider.refresh();
     }),
-    vscode.commands.registerCommand('runtimeFeed.removeWatchSymbol', async () => {
+    vscode.commands.registerCommand('runtimeFeed.removeWatchSymbol', async (node?: FeedNode) => {
       const configuration = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
       const watchlist = configuration.get<string[]>('watchlist', []);
 
@@ -336,24 +368,33 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      const selected = await vscode.window.showQuickPick(
-        watchlist.map((entry) => ({
-          label: entry,
-        })),
-        {
-          title: 'Remove Runtime Target',
-          placeHolder: 'Choose a symbol to remove from watch.targets',
-          ignoreFocusOut: true,
-        },
-      );
+      const directEntry = node?.watchEntry;
+      let entryToRemove: string | undefined;
 
-      if (!selected) {
-        return;
+      if (directEntry && watchlist.includes(directEntry)) {
+        entryToRemove = directEntry;
+      } else {
+        const selected = await vscode.window.showQuickPick(
+          watchlist.map((entry) => ({
+            label: entry,
+          })),
+          {
+            title: 'Remove Relay Target',
+            placeHolder: 'Choose a symbol to remove from watch.alloc',
+            ignoreFocusOut: true,
+          },
+        );
+
+        if (!selected) {
+          return;
+        }
+
+        entryToRemove = selected.label;
       }
 
       await configuration.update(
         'watchlist',
-        watchlist.filter((entry) => entry !== selected.label),
+        watchlist.filter((entry) => entry !== entryToRemove),
         vscode.ConfigurationTarget.Global,
       );
       await provider.refresh();
@@ -629,20 +670,70 @@ async function fetchQuotes(symbols: readonly string[], timeoutMs: number): Promi
     return new Map();
   }
 
-  const url = new URL(YAHOO_QUOTE_ENDPOINT);
-  url.searchParams.set('symbols', uniqueSymbols.join(','));
-  url.searchParams.set('lang', 'en-US');
-  url.searchParams.set('region', 'US');
-
-  const response = await requestJson<YahooQuoteResponse>(url, timeoutMs);
-  const results = response.quoteResponse?.result ?? [];
   const quoteMap = new Map<string, YahooQuote>();
+  const failures: string[] = [];
 
-  for (const quote of results) {
-    quoteMap.set(quote.symbol, quote);
+  for (const symbol of uniqueSymbols) {
+    try {
+      const quote = await fetchChartQuote(symbol, timeoutMs);
+      quoteMap.set(symbol, quote);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown chart upstream failure';
+      failures.push(`${symbol}: ${message}`);
+    }
+  }
+
+  if (quoteMap.size === 0 && failures.length > 0) {
+    throw new Error(failures[0]);
   }
 
   return quoteMap;
+}
+
+async function fetchChartQuote(symbol: string, timeoutMs: number): Promise<YahooQuote> {
+  const url = new URL(`${YAHOO_CHART_ENDPOINT}/${encodeURIComponent(symbol)}`);
+  url.searchParams.set('interval', '1d');
+  url.searchParams.set('range', '5d');
+  url.searchParams.set('includePrePost', 'false');
+  url.searchParams.set('events', 'div,splits');
+  url.searchParams.set('lang', 'en-US');
+  url.searchParams.set('region', 'US');
+
+  const response = await requestJson<YahooChartResponse>(url, timeoutMs);
+  const chartError = response.chart?.error;
+  if (chartError?.description) {
+    throw new Error(chartError.description);
+  }
+
+  const result = response.chart?.result?.[0];
+  const meta = result?.meta;
+  if (!meta) {
+    throw new Error('No chart metadata returned from upstream');
+  }
+
+  const regularMarketPrice = meta.regularMarketPrice;
+  const previousClose = meta.previousClose ?? meta.chartPreviousClose;
+  const regularMarketChange =
+    typeof regularMarketPrice === 'number' && typeof previousClose === 'number'
+      ? regularMarketPrice - previousClose
+      : undefined;
+  const regularMarketChangePercent =
+    typeof regularMarketChange === 'number' && typeof previousClose === 'number' && previousClose !== 0
+      ? (regularMarketChange / previousClose) * 100
+      : undefined;
+
+  return {
+    symbol: meta.symbol ?? symbol,
+    shortName: meta.shortName,
+    longName: meta.longName,
+    regularMarketPrice,
+    regularMarketPreviousClose: previousClose,
+    regularMarketChange,
+    regularMarketChangePercent,
+    regularMarketTime: meta.regularMarketTime,
+    marketState: meta.exchangeName,
+    currency: meta.currency,
+  };
 }
 
 async function searchSymbols(query: string, timeoutMs: number): Promise<YahooSearchQuote[]> {

@@ -61,7 +61,7 @@
       {
         "command": "runtimeFeed.removeWatchSymbol",
         "title": "Remove Relay Target",
-        "icon": "$(remove-close)"
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -79,7 +79,14 @@
         {
           "command": "runtimeFeed.removeWatchSymbol",
           "when": "view == runtimeFeedView",
-          "group": "navigation@3"
+          "group": "navigation@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "runtimeFeed.removeWatchSymbol",
+          "when": "view == runtimeFeedView && viewItem == watchTarget",
+          "group": "inline@1"
         }
       ]
     },
