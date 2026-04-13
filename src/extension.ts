@@ -43,10 +43,26 @@ interface YahooChartMeta {
   readonly regularMarketTime?: number;
   readonly currency?: string;
   readonly exchangeName?: string;
+  readonly currentTradingPeriod?: {
+    readonly pre?: YahooTradingPeriod;
+    readonly regular?: YahooTradingPeriod;
+    readonly post?: YahooTradingPeriod;
+  };
 }
 
 interface YahooChartResult {
   readonly meta?: YahooChartMeta;
+  readonly timestamp?: number[];
+  readonly indicators?: {
+    readonly quote?: Array<{
+      readonly close?: Array<number | null>;
+    }>;
+  };
+}
+
+interface YahooTradingPeriod {
+  readonly start?: number;
+  readonly end?: number;
 }
 
 interface YahooChartResponse {
@@ -692,9 +708,9 @@ async function fetchQuotes(symbols: readonly string[], timeoutMs: number): Promi
 
 async function fetchChartQuote(symbol: string, timeoutMs: number): Promise<YahooQuote> {
   const url = new URL(`${YAHOO_CHART_ENDPOINT}/${encodeURIComponent(symbol)}`);
-  url.searchParams.set('interval', '1d');
-  url.searchParams.set('range', '5d');
-  url.searchParams.set('includePrePost', 'false');
+  url.searchParams.set('interval', '1m');
+  url.searchParams.set('range', '1d');
+  url.searchParams.set('includePrePost', 'true');
   url.searchParams.set('events', 'div,splits');
   url.searchParams.set('lang', 'en-US');
   url.searchParams.set('region', 'US');
@@ -711,7 +727,8 @@ async function fetchChartQuote(symbol: string, timeoutMs: number): Promise<Yahoo
     throw new Error('No chart metadata returned from upstream');
   }
 
-  const regularMarketPrice = meta.regularMarketPrice;
+  const activeTick = extractActiveTick(result, meta);
+  const regularMarketPrice = activeTick?.price ?? meta.regularMarketPrice;
   const previousClose = meta.previousClose ?? meta.chartPreviousClose;
   const regularMarketChange =
     typeof regularMarketPrice === 'number' && typeof previousClose === 'number'
@@ -730,10 +747,63 @@ async function fetchChartQuote(symbol: string, timeoutMs: number): Promise<Yahoo
     regularMarketPreviousClose: previousClose,
     regularMarketChange,
     regularMarketChangePercent,
-    regularMarketTime: meta.regularMarketTime,
-    marketState: meta.exchangeName,
+    regularMarketTime: activeTick?.timestamp ?? meta.regularMarketTime,
+    marketState: activeTick?.session ?? meta.exchangeName,
     currency: meta.currency,
   };
+}
+
+function extractActiveTick(
+  result: YahooChartResult | undefined,
+  meta: YahooChartMeta,
+): { price: number; timestamp: number; session: string } | undefined {
+  const timestamps = result?.timestamp ?? [];
+  const closes = result?.indicators?.quote?.[0]?.close ?? [];
+
+  for (let index = Math.min(timestamps.length, closes.length) - 1; index >= 0; index -= 1) {
+    const timestamp = timestamps[index];
+    const price = closes[index];
+    if (typeof timestamp !== 'number' || typeof price !== 'number' || Number.isNaN(price)) {
+      continue;
+    }
+
+    return {
+      price,
+      timestamp,
+      session: resolveSessionName(timestamp, meta.currentTradingPeriod),
+    };
+  }
+
+  return undefined;
+}
+
+function resolveSessionName(
+  timestamp: number,
+  currentTradingPeriod?: YahooChartMeta['currentTradingPeriod'],
+): string {
+  const pre = currentTradingPeriod?.pre;
+  if (isWithinPeriod(timestamp, pre)) {
+    return 'PRE';
+  }
+
+  const regular = currentTradingPeriod?.regular;
+  if (isWithinPeriod(timestamp, regular)) {
+    return 'REGULAR';
+  }
+
+  const post = currentTradingPeriod?.post;
+  if (isWithinPeriod(timestamp, post)) {
+    return 'POST';
+  }
+
+  return 'ACTIVE';
+}
+
+function isWithinPeriod(timestamp: number, period?: YahooTradingPeriod): boolean {
+  return typeof period?.start === 'number'
+    && typeof period?.end === 'number'
+    && timestamp >= period.start
+    && timestamp <= period.end;
 }
 
 async function searchSymbols(query: string, timeoutMs: number): Promise<YahooSearchQuote[]> {
