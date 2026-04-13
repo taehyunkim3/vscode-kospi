@@ -1,7 +1,7 @@
 {
-  "name": "runtime-feed",
-  "displayName": "Ops Relay",
-  "description": "Text-only sidebar for external signal monitoring in an operations-style view.",
+  "name": "vscode-stock",
+  "displayName": "vscode stock",
+  "description": "VS Code 사이드바에서 주가와 지수를 텍스트로 보여주는 확장입니다.",
   "version": "0.0.1",
   "publisher": "local",
   "pricing": "Free",
@@ -59,14 +59,14 @@
       "explorer": [
         {
           "id": "runtimeFeedView",
-          "name": "Ops Relay"
+          "name": "vscode stock"
         }
       ]
     },
     "commands": [
       {
         "command": "runtimeFeed.refresh",
-        "title": "Refresh Ops Relay",
+        "title": "Refresh vscode stock",
         "icon": "$(refresh)"
       },
       {
@@ -107,7 +107,7 @@
       ]
     },
     "configuration": {
-      "title": "Ops Relay",
+      "title": "vscode stock",
       "properties": {
         "runtimeFeed.watchlist": {
           "type": "array",

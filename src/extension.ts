@@ -341,9 +341,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('runtimeFeed.addWatchSymbol', async () => {
       const input = await vscode.window.showInputBox({
-        title: 'Register Relay Target',
-        prompt: 'Search company, symbol, or KRX code',
-        placeHolder: 'Examples: Apple, AAPL, 삼성전자, 005930, 035720.KQ',
+        title: '종목 추가',
+        prompt: '회사명, 심볼, 또는 KRX 코드를 입력하세요',
+        placeHolder: '예: Apple, AAPL, 삼성전자, 005930, 035720.KQ',
         ignoreFocusOut: true,
       });
 
@@ -368,7 +368,7 @@ export function activate(context: vscode.ExtensionContext): void {
       );
 
       if (watchlist.includes(candidate) || (normalizedCandidateSymbol && existingSymbols.has(normalizedCandidateSymbol))) {
-        void vscode.window.showInformationMessage('Runtime target already exists.');
+        void vscode.window.showInformationMessage('이미 추가된 종목입니다.');
         return;
       }
 
@@ -380,7 +380,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const watchlist = configuration.get<string[]>('watchlist', []);
 
       if (watchlist.length === 0) {
-        void vscode.window.showInformationMessage('No runtime targets to remove.');
+        void vscode.window.showInformationMessage('삭제할 종목이 없습니다.');
         return;
       }
 
@@ -395,8 +395,8 @@ export function activate(context: vscode.ExtensionContext): void {
             label: entry,
           })),
           {
-            title: 'Remove Relay Target',
-            placeHolder: 'Choose a symbol to remove from watch.alloc',
+            title: '종목 삭제',
+            placeHolder: '삭제할 종목을 선택하세요',
             ignoreFocusOut: true,
           },
         );
@@ -659,22 +659,22 @@ async function selectWatchCandidate(input: string): Promise<{ entry: string } | 
     if (!seenEntries.has(rawEntry)) {
       picks.unshift({
         entry: rawEntry,
-        label: `Use raw symbol`,
+        label: `입력한 심볼 그대로 사용`,
         description: rawEntry,
-        detail: 'Registers the exact normalized symbol without a company-name label',
+        detail: '회사명 없이 입력한 심볼 그대로 등록합니다',
         alwaysShow: true,
       });
     }
   }
 
   if (picks.length === 0) {
-    void vscode.window.showWarningMessage(searchFailed ? 'Target search failed and no direct symbol was detected.' : 'No matching relay targets found.');
+    void vscode.window.showWarningMessage(searchFailed ? '종목 검색에 실패했고 직접 사용할 심볼도 찾지 못했습니다.' : '일치하는 종목을 찾지 못했습니다.');
     return undefined;
   }
 
   const selected = await vscode.window.showQuickPick(picks, {
-    title: 'Select Relay Target',
-    placeHolder: 'Pick a matching instrument or use the raw symbol',
+    title: '종목 선택',
+    placeHolder: '검색 결과에서 종목을 선택하세요',
     ignoreFocusOut: true,
   });
 
