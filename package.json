@@ -3,7 +3,7 @@
   "displayName": "vscode stock",
   "description": "VS Code 사이드바에서 주가와 지수를 텍스트로 보여주는 확장입니다.",
   "version": "0.0.1",
-  "publisher": "local",
+  "publisher": "taehyunkim3",
   "pricing": "Free",
   "engines": {
     "vscode": "^1.114.0"
@@ -35,6 +35,7 @@
   ],
   "author": "",
   "license": "ISC",
+  "icon": "media/icon.png",
   "homepage": "https://github.com/taehyunkim3/vscode-kospi#readme",
   "repository": {
     "type": "git",
@@ -52,6 +53,7 @@
     "LICENSE",
     "README.md",
     "SUPPORT.md",
+    "media",
     "package.json"
   ],
   "contributes": {
