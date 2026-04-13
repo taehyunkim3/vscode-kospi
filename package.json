@@ -1,0 +1,127 @@
+{
+  "name": "runtime-feed",
+  "displayName": "Ops Relay",
+  "description": "Text-only sidebar for external signal monitoring in an operations-style view.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.114.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:runtimeFeedView",
+    "onCommand:runtimeFeed.refresh",
+    "onCommand:runtimeFeed.addWatchSymbol",
+    "onCommand:runtimeFeed.removeWatchSymbol"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "keywords": [
+    "vscode",
+    "sidebar",
+    "monitor",
+    "market",
+    "fx"
+  ],
+  "author": "",
+  "license": "ISC",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "package.json"
+  ],
+  "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "runtimeFeedView",
+          "name": "Ops Relay"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "runtimeFeed.refresh",
+        "title": "Refresh Ops Relay",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "runtimeFeed.addWatchSymbol",
+        "title": "Register Relay Target",
+        "icon": "$(add)"
+      },
+      {
+        "command": "runtimeFeed.removeWatchSymbol",
+        "title": "Remove Relay Target",
+        "icon": "$(remove-close)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "runtimeFeed.refresh",
+          "when": "view == runtimeFeedView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "runtimeFeed.addWatchSymbol",
+          "when": "view == runtimeFeedView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "runtimeFeed.removeWatchSymbol",
+          "when": "view == runtimeFeedView",
+          "group": "navigation@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Ops Relay",
+      "properties": {
+        "runtimeFeed.watchlist": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Watch targets. Examples: `AAPL`, `MSFT`, `005930.KS`, `Naver=035420.KS`, `Kakao=035720.KQ`."
+        },
+        "runtimeFeed.displayMode": {
+          "type": "string",
+          "default": "stealth",
+          "enum": [
+            "stealth",
+            "explicit"
+          ],
+          "markdownDescription": "Controls whether labels look like a generic operations panel (`stealth`) or show direct market names (`explicit`)."
+        },
+        "runtimeFeed.autoRefreshSeconds": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "Automatic refresh interval in seconds. `0` disables polling."
+        },
+        "runtimeFeed.requestTimeoutMs": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 2000,
+          "markdownDescription": "HTTP timeout for the upstream quote request."
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/vscode": "^1.114.0",
+    "@vscode/vsce": "^3.7.1",
+    "typescript": "^6.0.2"
+  }
+}
