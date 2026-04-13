@@ -2,7 +2,7 @@
   "name": "vscode-kospi",
   "displayName": "vscode kospi",
   "description": "VS Code 사이드바에서 주가와 지수를 텍스트로 보여주는 확장입니다.",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "publisher": "taehyunkim3",
   "pricing": "Free",
   "engines": {
@@ -18,8 +18,8 @@
     "onCommand:runtimeFeed.refreshNews",
     "onCommand:runtimeFeed.addWatchSymbol",
     "onCommand:runtimeFeed.removeWatchSymbol",
-    "onCommand:runtimeFeed.selectSymbol",
-    "onCommand:runtimeFeed.openNewsLink"
+    "onCommand:runtimeFeed.pickNewsSymbol",
+    "onCommand:runtimeFeed.selectSymbol"
   ],
   "main": "./dist/extension.js",
   "scripts": {
@@ -80,11 +80,11 @@
       "vscodeKospi": [
         {
           "id": "runtimeFeedView",
-          "name": "시장 시세"
+          "name": "Market Quotes"
         },
         {
           "id": "runtimeNewsView",
-          "name": "주요 뉴스"
+          "name": "Top News"
         }
       ]
     },
@@ -105,6 +105,11 @@
         "icon": "$(radio-tower)"
       },
       {
+        "command": "runtimeFeed.pickNewsSymbol",
+        "title": "Select News Symbol",
+        "icon": "$(list-selection)"
+      },
+      {
         "command": "runtimeFeed.removeWatchSymbol",
         "title": "Remove Relay Target",
         "icon": "$(trash)"
@@ -112,10 +117,6 @@
       {
         "command": "runtimeFeed.selectSymbol",
         "title": "Select News Target"
-      },
-      {
-        "command": "runtimeFeed.openNewsLink",
-        "title": "Open News Link"
       }
     ],
     "menus": {
@@ -139,6 +140,11 @@
           "command": "runtimeFeed.refreshNews",
           "when": "view == runtimeNewsView",
           "group": "navigation@1"
+        },
+        {
+          "command": "runtimeFeed.pickNewsSymbol",
+          "when": "view == runtimeNewsView",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [

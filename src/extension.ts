@@ -6,7 +6,7 @@ const QUOTES_VIEW_ID = 'runtimeFeedView';
 const NEWS_VIEW_ID = 'runtimeNewsView';
 const YAHOO_CHART_ENDPOINT = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const YAHOO_SEARCH_ENDPOINT = 'https://query1.finance.yahoo.com/v1/finance/search';
-const EXTENSION_USER_AGENT = 'vscode-kospi/0.0.2';
+const EXTENSION_USER_AGENT = 'vscode-kospi/0.0.4';
 
 type SectionKey = 'runtime.pipe' | 'core.indices' | 'fx.bridge' | 'watch.targets';
 type DisplayMode = 'stealth' | 'explicit';
@@ -95,6 +95,7 @@ interface YahooSearchNewsItem {
   readonly title?: string;
   readonly publisher?: string;
   readonly providerPublishTime?: number;
+  readonly summary?: string;
   readonly link?: string;
   readonly clickThroughUrl?: YahooNewsLink;
 }
@@ -106,6 +107,10 @@ interface YahooSearchResponse {
 
 interface WatchCandidatePick extends vscode.QuickPickItem {
   readonly entry: string;
+}
+
+interface SymbolQuickPickItem extends vscode.QuickPickItem {
+  readonly selection: NewsSelection;
 }
 
 interface FeedSnapshot {
@@ -125,6 +130,12 @@ interface StockNewsItem {
   readonly publisher: string;
   readonly url: string;
   readonly publishedAt?: Date;
+  readonly summary?: string;
+}
+
+interface StockNewsDetail {
+  readonly summary?: string;
+  readonly body?: string;
 }
 
 interface NewsSnapshot {
@@ -159,6 +170,8 @@ class FeedNode extends vscode.TreeItem {
   public children: FeedNode[] = [];
   public watchEntry?: string;
   public selection?: NewsSelection;
+  public newsItem?: StockNewsItem;
+  public nodeType?: 'newsItem' | 'newsDetailLine';
 
   public constructor(
     label: string,
@@ -292,6 +305,10 @@ class RuntimeFeedProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
     this.selectionState.set(buildNewsSelection(availableDefinitions[0]));
   }
 
+  public getSelectableNodes(): QuoteDefinition[] {
+    return this.getSelectableDefinitions();
+  }
+
   private getAllDefinitions(): QuoteDefinition[] {
     return [...CORE_DEFINITIONS, ...FX_DEFINITIONS, ...this.getWatchDefinitions()];
   }
@@ -373,6 +390,7 @@ class RuntimeFeedProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
 
     const quote = this.snapshot.quotes.get(definition.symbol);
     const isSelected = this.selectionState.value?.symbol === definition.symbol;
+    item.label = isSelected ? `${resolveQuoteLabel(definition)}  [news]` : resolveQuoteLabel(definition);
 
     if (!quote) {
       item.description = `${isSelected ? 'selected | ' : ''}${this.isRefreshing ? 'syncing' : 'unavailable'}`;
@@ -424,6 +442,8 @@ class RuntimeNewsProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
   private snapshot: NewsSnapshot = { items: [] };
   private isRefreshing = false;
   private readonly selectionSubscription: vscode.Disposable;
+  private readonly detailCache = new Map<string, StockNewsDetail>();
+  private readonly detailLoading = new Set<string>();
 
   public readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
@@ -443,6 +463,10 @@ class RuntimeNewsProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
 
   public getChildren(element?: FeedNode): FeedNode[] {
     if (element) {
+      if (element.nodeType === 'newsItem' && element.newsItem) {
+        return this.buildNewsDetailNodes(element.newsItem);
+      }
+
       return element.children;
     }
 
@@ -461,6 +485,8 @@ class RuntimeNewsProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
 
     try {
       const items = await fetchNews(selection.query, getRequestTimeoutMs());
+      this.detailCache.clear();
+      this.detailLoading.clear();
       this.snapshot = {
         items,
         updatedAt: new Date(),
@@ -495,14 +521,18 @@ class RuntimeNewsProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
     updatedAt.description = this.snapshot.updatedAt ? formatDateTime(this.snapshot.updatedAt) : 'pending';
     updatedAt.tooltip = 'Last successful news sync';
 
-    const nodes = [summary, status, updatedAt];
+    const hint = new FeedNode('news.hint', vscode.TreeItemCollapsibleState.None);
+    hint.description = 'Use the title action or click Market Quotes';
+    hint.tooltip = 'Use the Select Symbol action in this view title, or click an item in the Market Quotes view.';
+
+    const nodes = [summary, hint, status, updatedAt];
     const newsItems = this.buildNewsNodes(selection);
     return [...nodes, ...newsItems];
   }
 
   private buildNewsNodes(selection: NewsSelection | undefined): FeedNode[] {
     if (!selection) {
-      return [this.buildPlaceholder('news.empty', '종목을 클릭하면 주요 뉴스를 표시합니다.')];
+      return [this.buildPlaceholder('news.empty', 'Select a symbol to load top news.')];
     }
 
     if (this.isRefreshing && this.snapshot.items.length === 0) {
@@ -518,16 +548,67 @@ class RuntimeNewsProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
     }
 
     return this.snapshot.items.map((item) => {
-      const node = new FeedNode(item.title, vscode.TreeItemCollapsibleState.None);
+      const node = new FeedNode(item.title, vscode.TreeItemCollapsibleState.Collapsed);
+      node.nodeType = 'newsItem';
+      node.newsItem = item;
       node.description = buildNewsDescription(item);
       node.tooltip = buildNewsTooltip(item, selection);
-      node.command = {
-        command: 'runtimeFeed.openNewsLink',
-        title: 'Open News',
-        arguments: [item.url],
-      };
       return node;
     });
+  }
+
+  public async ensureNewsItemDetail(item: StockNewsItem): Promise<void> {
+    if (this.detailCache.has(item.url) || this.detailLoading.has(item.url)) {
+      return;
+    }
+
+    this.detailLoading.add(item.url);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+
+    try {
+      this.detailCache.set(item.url, await fetchNewsDetail(item, getRequestTimeoutMs()));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load article detail';
+      this.detailCache.set(item.url, {
+        summary: item.summary,
+        body: `Unable to load article detail.\n${message}`,
+      });
+    } finally {
+      this.detailLoading.delete(item.url);
+      this.onDidChangeTreeDataEmitter.fire(undefined);
+    }
+  }
+
+  private buildNewsDetailNodes(item: StockNewsItem): FeedNode[] {
+    if (this.detailLoading.has(item.url)) {
+      return [this.buildDetailLine('Loading article detail...')];
+    }
+
+    const detail = this.detailCache.get(item.url);
+    const summary = detail?.summary ?? item.summary;
+    const body = detail?.body;
+    const lines: string[] = [
+      `Publisher: ${item.publisher}`,
+      `Published: ${item.publishedAt ? formatDateTime(item.publishedAt) : 'n/a'}`,
+      '',
+      'Summary:',
+      ...(summary ? splitWrappedLines(summary, 46) : ['Summary not available.']),
+    ];
+
+    if (body?.trim()) {
+      lines.push('', 'Detail:', ...splitWrappedLines(body, 46));
+    }
+
+    return lines
+      .filter((line, index, source) => !(line === '' && source[index - 1] === ''))
+      .map((line) => this.buildDetailLine(line || ' '));
+  }
+
+  private buildDetailLine(text: string): FeedNode {
+    const node = new FeedNode(text, vscode.TreeItemCollapsibleState.None);
+    node.nodeType = 'newsDetailLine';
+    node.tooltip = text;
+    return node;
   }
 
   private buildPlaceholder(label: string, description: string): FeedNode {
@@ -553,6 +634,16 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   context.subscriptions.push(
+    newsView.onDidExpandElement(async (event) => {
+      if (event.element.nodeType !== 'newsItem' || !event.element.newsItem) {
+        return;
+      }
+
+      await newsProvider.ensureNewsItemDetail(event.element.newsItem);
+    }),
+  );
+
+  context.subscriptions.push(
     feedProvider,
     newsProvider,
     quotesView,
@@ -564,6 +655,15 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('runtimeFeed.refreshNews', async () => {
       await newsProvider.refresh();
     }),
+    vscode.commands.registerCommand('runtimeFeed.pickNewsSymbol', async () => {
+      const selected = await pickNewsTarget(feedProvider, selectionState.value?.symbol);
+      if (!selected) {
+        return;
+      }
+
+      selectionState.set(selected);
+      await newsProvider.refresh();
+    }),
     vscode.commands.registerCommand('runtimeFeed.selectSymbol', async (node?: FeedNode) => {
       const selection = node?.selection;
       if (!selection) {
@@ -572,13 +672,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
       selectionState.set(selection);
       await newsProvider.refresh();
-    }),
-    vscode.commands.registerCommand('runtimeFeed.openNewsLink', async (url?: string) => {
-      if (!url) {
-        return;
-      }
-
-      await vscode.env.openExternal(vscode.Uri.parse(url));
     }),
     vscode.commands.registerCommand('runtimeFeed.addWatchSymbol', async () => {
       const input = await vscode.window.showInputBox({
@@ -710,7 +803,9 @@ function buildNewsSelection(definition: QuoteDefinition): NewsSelection {
   return {
     symbol: definition.symbol,
     label: definition.explicitLabel,
-    query: definition.symbol,
+    query: definition.explicitLabel === definition.symbol
+      ? definition.symbol
+      : `${definition.explicitLabel} ${definition.symbol}`,
   };
 }
 
@@ -875,6 +970,7 @@ function buildNewsTooltip(item: StockNewsItem, selection: NewsSelection): string
     `target: ${selection.label} (${selection.symbol})`,
     `publisher: ${item.publisher}`,
     `published_at: ${item.publishedAt ? formatDateTime(item.publishedAt) : 'n/a'}`,
+    `summary: ${item.summary ? 'available' : 'loading on expand'}`,
     `url: ${item.url}`,
   ].join('\n');
 }
@@ -899,6 +995,78 @@ function formatRelativeTime(value: Date): string {
 
   const diffDays = Math.round(diffHours / 24);
   return formatter.format(diffDays, 'day');
+}
+
+function wrapText(text: string, lineWidth: number): string {
+  const normalized = text.replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized
+    .split('\n')
+    .map((paragraph) => wrapParagraph(paragraph, lineWidth))
+    .join('\n');
+}
+
+function splitWrappedLines(text: string, lineWidth: number): string[] {
+  return wrapText(text, lineWidth).split('\n');
+}
+
+function wrapParagraph(paragraph: string, lineWidth: number): string {
+  const normalized = paragraph.trim();
+  if (!normalized) {
+    return '';
+  }
+
+  const words = normalized.split(/\s+/);
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    if (!currentLine) {
+      currentLine = word;
+      continue;
+    }
+
+    if ((currentLine.length + 1 + word.length) <= lineWidth) {
+      currentLine = `${currentLine} ${word}`;
+      continue;
+    }
+
+    lines.push(currentLine);
+    currentLine = word;
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines.join('\n');
+}
+
+async function pickNewsTarget(
+  feedProvider: RuntimeFeedProvider,
+  selectedSymbol?: string,
+): Promise<NewsSelection | undefined> {
+  const picks: SymbolQuickPickItem[] = feedProvider.getSelectableNodes().map((definition) => {
+    const selection = buildNewsSelection(definition);
+    const isSelected = selection.symbol === selectedSymbol;
+    return {
+      selection,
+      label: isSelected ? `$(check) ${selection.label}` : selection.label,
+      description: selection.symbol,
+      detail: isSelected ? 'Current news target' : 'Select to switch the top news target',
+    };
+  });
+
+  const selected = await vscode.window.showQuickPick(picks, {
+    title: 'Select News Symbol',
+    placeHolder: 'Choose the symbol for Top News',
+    ignoreFocusOut: true,
+  });
+
+  return selected?.selection;
 }
 
 function getRequestTimeoutMs(): number {
@@ -1095,11 +1263,29 @@ async function fetchNews(query: string, timeoutMs: number): Promise<StockNewsIte
         publishedAt: typeof item.providerPublishTime === 'number'
           ? new Date(item.providerPublishTime * 1000)
           : undefined,
+        summary: item.summary?.trim() || undefined,
       });
     }
   }
 
   return [...deduped.values()];
+}
+
+async function fetchNewsDetail(item: StockNewsItem, timeoutMs: number): Promise<StockNewsDetail> {
+  const html = await requestText(new URL(item.url), timeoutMs, 'text/html,application/xhtml+xml');
+  const metaDescription = decodeHtmlEntities(
+    extractMetaContent(html, ['description', 'og:description', 'twitter:description']) || '',
+  );
+  const paragraphs = extractParagraphs(html);
+  const body = paragraphs
+    .filter((paragraph) => paragraph.length > 40)
+    .slice(0, 5)
+    .join('\n\n');
+
+  return {
+    summary: item.summary ?? (metaDescription || undefined),
+    body: body || metaDescription || undefined,
+  };
 }
 
 function extractActiveTick(
@@ -1169,12 +1355,17 @@ async function searchSymbols(query: string, timeoutMs: number): Promise<YahooSea
 }
 
 async function requestJson<T>(url: URL, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
+  const body = await requestText(url, timeoutMs, 'application/json');
+  return JSON.parse(body) as T;
+}
+
+async function requestText(url: URL, timeoutMs: number, accept = 'text/html,application/xhtml+xml'): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const request = https.get(
       url,
       {
         headers: {
-          Accept: 'application/json',
+          Accept: accept,
           'User-Agent': EXTENSION_USER_AGENT,
         },
         timeout: timeoutMs,
@@ -1195,7 +1386,7 @@ async function requestJson<T>(url: URL, timeoutMs: number): Promise<T> {
         response.on('end', () => {
           try {
             const body = Buffer.concat(chunks).toString('utf8');
-            resolve(JSON.parse(body) as T);
+            resolve(body);
           } catch (error) {
             reject(error);
           }
@@ -1208,4 +1399,60 @@ async function requestJson<T>(url: URL, timeoutMs: number): Promise<T> {
     });
     request.on('error', reject);
   });
+}
+
+function extractMetaContent(html: string, names: string[]): string | undefined {
+  for (const name of names) {
+    const patterns = [
+      new RegExp(`<meta[^>]+name=["']${escapeRegExp(name)}["'][^>]+content=["']([^"']+)["'][^>]*>`, 'iu'),
+      new RegExp(`<meta[^>]+property=["']${escapeRegExp(name)}["'][^>]+content=["']([^"']+)["'][^>]*>`, 'iu'),
+      new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${escapeRegExp(name)}["'][^>]*>`, 'iu'),
+      new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${escapeRegExp(name)}["'][^>]*>`, 'iu'),
+    ];
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      const content = match?.[1]?.trim();
+      if (content) {
+        return content;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function extractParagraphs(html: string): string[] {
+  const withoutScripts = html
+    .replace(/<script[\s\S]*?<\/script>/giu, ' ')
+    .replace(/<style[\s\S]*?<\/style>/giu, ' ');
+
+  return [...withoutScripts.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/giu)]
+    .map((match) => decodeHtmlEntities(stripHtml(match[1])))
+    .map((text) => normalizeWhitespace(text))
+    .filter((text) => text.length > 0)
+    .filter((text, index, source) => source.indexOf(text) === index);
+}
+
+function stripHtml(text: string): string {
+  return text.replace(/<[^>]+>/gu, ' ');
+}
+
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/gu, ' ').trim();
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/gu, ' ')
+    .replace(/&amp;/gu, '&')
+    .replace(/&lt;/gu, '<')
+    .replace(/&gt;/gu, '>')
+    .replace(/&quot;/gu, '"')
+    .replace(/&#39;/gu, "'")
+    .replace(/&#x27;/giu, "'");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
