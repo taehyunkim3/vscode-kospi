@@ -1,110 +1,58 @@
 # Ops Relay
 
-`Ops Relay` is a VS Code sidebar extension that renders a text-only monitor for:
+Text-only sidebar stock/currency monitor for VS Code.  
+VS Code용 텍스트 기반 사이드바 증시/환율 모니터 입니다.
 
-- KOSPI
-- KOSDAQ
-- USD/KRW
-- KRW per 100 JPY
-- S&P 500
-- NASDAQ
-- Dow Jones
-- User-selected watch targets
+Ops Relay shows live market-related signals in a plain operational view.  
+Ops Relay는 실시간 시장 관련 신호를 운영 패널처럼 단순한 형태로 보여줍니다.
 
-The default presentation intentionally avoids charts, colors, and finance-dashboard styling. Everything is rendered as plain tree items so it looks closer to an internal runtime panel than a stock app.
+Reason for the name: We wanted to avoid a stock-like name and give it more of a dev tool extension vibe.
+Ops Relay라고 이름지은 이유는, stock 같은 이름을 사용하면 너무 주식 느낌이 나서, 최대한 개발용 extension 같은 비주얼을 주기 위함입니다.
 
-## What it looks like
+회사에서도 눈치보지 말고 편하게 주가를 확인해보세요.
 
-- Appears inside the default Explorer sidebar
-- Defaults to a stealth label set such as `ops.relay`, `signal.core`, `signal.fx`, and `watch.alloc`
-- Shows sync state, source, last update time, and payload status in the same list
-- Refresh is manual by default, with optional interval polling
+## Features
 
-## Data source
+- KOSPI, KOSDAQ, USD/KRW, KRW per 100 JPY
+- S&P 500, NASDAQ, Dow Jones
+- User watchlist
+- Manual refresh
+- Text-only layout, no charts
+- Session-aware display for active market hours
 
-This version uses Yahoo Finance's public quote endpoint:
+## 기능
 
-- `https://query1.finance.yahoo.com/v7/finance/quote`
+- 코스피, 코스닥, 원/달러, 100엔당 원화
+- S&P 500, 나스닥, 다우존스
+- 사용자 관심 종목 목록
+- 수동 새로고침
+- 차트 없는 텍스트 전용 레이아웃
+- 현재 운영 중인 세션 기준 표시
 
-Why this source:
+## Usage
 
-- No API key required
-- Covers Korean indices, FX pairs, US major indices, and regular stock symbols in one place
-- Cheap to ship because it uses Node's built-in `https` client instead of extra SDKs
+Open `Ops Relay` in the Explorer sidebar.  
+Use the toolbar buttons to refresh, add, or remove watch targets.
 
-Trade-off:
-
-- It is not an official paid market-data contract. If Yahoo changes the endpoint or rate-limits harder, the extension may need a source swap.
-
-## Watch target formats
-
-Open the `Ops Relay` view title buttons and use:
-
-- `Refresh Ops Relay`
-- `Register Relay Target`
-- `Remove Relay Target`
-
-Accepted watch target formats:
-
-- `AAPL`
-- `MSFT`
-- `005930.KS`
-- `035720.KQ`
-- `Naver=035420.KS`
-- `Samsung:005930.KS`
-
-Notes:
-
-- If you enter only a 6-digit Korean code like `005930`, it defaults to `.KS`
-- For KOSDAQ, enter the suffix explicitly, for example `035720.KQ`
-
-You can also edit settings directly:
-
-```json
-"runtimeFeed.watchlist": [
-  "AAPL",
-  "005930.KS",
-  "Kakao=035720.KQ"
-]
-```
-
-If you search by name in the add dialog, the extension queries Yahoo Finance search first and lets you choose a matching symbol.
+`Explorer` 사이드바에서 `Ops Relay`를 열면 됩니다.  
+상단 버튼으로 새로고침, 관심 종목 추가, 삭제를 할 수 있습니다.
 
 ## Settings
 
-```json
-"runtimeFeed.displayMode": "stealth",
-"runtimeFeed.autoRefreshSeconds": 0,
-"runtimeFeed.requestTimeoutMs": 10000
-```
+- `runtimeFeed.displayMode`
+- `runtimeFeed.watchlist`
+- `runtimeFeed.autoRefreshSeconds`
+- `runtimeFeed.requestTimeoutMs`
 
-- `displayMode`: `stealth` hides direct market names in the tree, `explicit` shows them
-- `autoRefreshSeconds`: `0` disables polling
-- `requestTimeoutMs`: upstream HTTP timeout in milliseconds
+## Data Source
 
-## Run locally
+This extension currently uses public Yahoo Finance endpoints.  
+No API key is required in the current version.
 
-```bash
-npm install
-npm run compile
-```
+현재 버전은 Yahoo Finance 공개 엔드포인트를 사용합니다.  
+별도 API 키는 필요하지 않습니다.
 
-Then press `F5` in VS Code to launch an Extension Development Host.
+## Repository
 
-## Package locally
-
-```bash
-npm run package
-```
-
-## If you want a more official fallback later
-
-The current implementation does not require an API key.
-
-If you later want a key-based fallback:
-
-1. Create a free key from Alpha Vantage.
-2. Store it in a VS Code setting or secret storage.
-3. Swap the fetch layer in `src/extension.ts`.
-
-Alpha Vantage is easier to document formally, but Yahoo currently covers the mixed symbol set better for this extension's default requirements.
+- GitHub: https://github.com/taehyunkim3/vscode-kospi
+- Issues: https://github.com/taehyunkim3/vscode-kospi/issues
