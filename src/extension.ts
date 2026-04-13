@@ -292,7 +292,7 @@ class RuntimeFeedProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
       ? applyTransform(quote.regularMarketPrice, definition.transformPrice)
       : undefined;
     const percent = quote.regularMarketChangePercent;
-    item.description = `${formatPrice(price, definition.decimals)} | ${formatPercent(percent)}`;
+    item.description = `${formatPrice(price, definition.decimals)} | ${formatSessionAndPercent(quote.marketState, percent)}`;
     item.tooltip = buildQuoteTooltip(definition, quote, price, this.snapshot.updatedAt);
     return item;
   }
@@ -491,6 +491,11 @@ function formatPercent(percent: number | undefined): string {
 
   const prefix = percent > 0 ? '+' : '';
   return `${prefix}${percent.toFixed(2)}%`;
+}
+
+function formatSessionAndPercent(session: string | undefined, percent: number | undefined): string {
+  const sessionLabel = session?.trim() || 'ACTIVE';
+  return `${sessionLabel} ${formatPercent(percent)}`;
 }
 
 function formatDateTime(value: Date): string {
