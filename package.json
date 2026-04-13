@@ -4,6 +4,7 @@
   "description": "Text-only sidebar for external signal monitoring in an operations-style view.",
   "version": "0.0.1",
   "publisher": "local",
+  "pricing": "Free",
   "engines": {
     "vscode": "^1.114.0"
   },
@@ -21,7 +22,9 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
-    "package": "vsce package --allow-missing-repository"
+    "package": "vsce package",
+    "publish:vsce": "vsce publish",
+    "publish:ovsx": "npx ovsx publish"
   },
   "keywords": [
     "vscode",
@@ -32,10 +35,23 @@
   ],
   "author": "",
   "license": "ISC",
+  "homepage": "https://github.com/taehyunkim3/vscode-kospi#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/taehyunkim3/vscode-kospi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/taehyunkim3/vscode-kospi/issues"
+  },
+  "galleryBanner": {
+    "color": "#1f1f1f",
+    "theme": "dark"
+  },
   "files": [
     "dist",
     "LICENSE",
     "README.md",
+    "SUPPORT.md",
     "package.json"
   ],
   "contributes": {
