@@ -31,7 +31,13 @@
     "sidebar",
     "monitor",
     "market",
-    "fx"
+    "fx",
+    "stock",
+    "kospi",
+    "kosdaq",
+    "nasdaq",
+    "dowjones",
+    "s&p500"
   ],
   "author": "",
   "license": "ISC",
