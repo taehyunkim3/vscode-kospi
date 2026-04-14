@@ -2,11 +2,11 @@
   "name": "vscode-kospi",
   "displayName": "vscode kospi",
   "description": "VS Code 사이드바에서 주가와 지수를 텍스트로 보여주는 확장입니다.",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "taehyunkim3",
   "pricing": "Free",
   "engines": {
-    "vscode": "^1.114.0"
+    "vscode": "^1.105.0"
   },
   "categories": [
     "Other"
@@ -192,7 +192,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "@types/vscode": "^1.114.0",
+    "@types/vscode": "^1.105.0",
     "@vscode/vsce": "^3.7.1",
     "typescript": "^6.0.2"
   }

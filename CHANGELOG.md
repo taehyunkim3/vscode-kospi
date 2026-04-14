@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.5
+
+- Lowered the minimum VS Code engine requirement to `^1.105.0` for Cursor compatibility
+- Bumped release metadata to `0.0.5`
+
 ## 0.0.4
 
 - Replaced editor-based news preview with expandable sidebar news detail
