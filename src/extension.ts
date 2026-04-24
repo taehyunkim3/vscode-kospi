@@ -6,7 +6,7 @@ const QUOTES_VIEW_ID = 'runtimeFeedView';
 const NEWS_VIEW_ID = 'runtimeNewsView';
 const YAHOO_CHART_ENDPOINT = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const YAHOO_SEARCH_ENDPOINT = 'https://query1.finance.yahoo.com/v1/finance/search';
-const EXTENSION_USER_AGENT = 'vscode-kospi/0.0.7';
+const EXTENSION_USER_AGENT = 'vscode-kospi/0.0.8';
 const MAX_QUOTE_REQUESTS_PER_BATCH = 6;
 
 type SectionKey = 'runtime.pipe' | 'core.indices' | 'fx.bridge' | 'watch.targets';

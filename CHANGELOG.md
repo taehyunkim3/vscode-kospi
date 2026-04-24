@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.8
+
+- Bumped release metadata for the UX polish package
+
 ## 0.0.7
 
 - Polished sidebar labels, command titles, and default display mode for clearer first-run UX

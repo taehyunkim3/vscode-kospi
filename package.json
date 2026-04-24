@@ -2,7 +2,7 @@
   "name": "vscode-kospi",
   "displayName": "KOSPI Stock Monitor",
   "description": "KOSPI, KOSDAQ, NASDAQ, S&P 500, Dow, USD/KRW 환율과 관심 종목 뉴스/시세를 VS Code/Cursor 사이드바에서 보여주는 주식 모니터 확장입니다.",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "publisher": "taehyunkim3",
   "pricing": "Free",
   "engines": {
