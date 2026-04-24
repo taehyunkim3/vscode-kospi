@@ -6,7 +6,8 @@ const QUOTES_VIEW_ID = 'runtimeFeedView';
 const NEWS_VIEW_ID = 'runtimeNewsView';
 const YAHOO_CHART_ENDPOINT = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const YAHOO_SEARCH_ENDPOINT = 'https://query1.finance.yahoo.com/v1/finance/search';
-const EXTENSION_USER_AGENT = 'vscode-kospi/0.0.5';
+const EXTENSION_USER_AGENT = 'vscode-kospi/0.0.7';
+const MAX_QUOTE_REQUESTS_PER_BATCH = 6;
 
 type SectionKey = 'runtime.pipe' | 'core.indices' | 'fx.bridge' | 'watch.targets';
 type DisplayMode = 'stealth' | 'explicit';
@@ -191,7 +192,7 @@ class NewsSelectionState {
     return this.currentSelection;
   }
 
-  public set(selection: NewsSelection): void {
+  public set(selection: NewsSelection): boolean {
     const previous = this.currentSelection;
     if (
       previous
@@ -199,11 +200,12 @@ class NewsSelectionState {
       && previous.label === selection.label
       && previous.query === selection.query
     ) {
-      return;
+      return false;
     }
 
     this.currentSelection = selection;
     this.onDidChangeSelectionEmitter.fire(this.currentSelection);
+    return true;
   }
 }
 
@@ -327,21 +329,30 @@ class RuntimeFeedProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
   }
 
   private buildRuntimeSection(): FeedNode {
+    const displayMode = getDisplayMode();
     const section = new FeedNode(
-      getDisplayMode() === 'stealth' ? 'ops.relay' : 'runtime.pipe',
+      displayMode === 'stealth' ? 'ops.relay' : 'Status',
       vscode.TreeItemCollapsibleState.Expanded,
     );
-    section.description = 'control plane';
+    section.description = displayMode === 'stealth' ? 'control plane' : 'market data';
     section.children = [
       this.buildLeaf(
-        'transport.status',
-        this.isRefreshing ? 'pulling upstream' : this.snapshot.errorMessage ? 'degraded' : 'online',
+        displayMode === 'stealth' ? 'transport.status' : 'Connection',
+        this.isRefreshing ? 'syncing' : this.snapshot.errorMessage ? 'needs attention' : 'online',
         buildStatusTooltip(this.snapshot, this.isRefreshing),
       ),
-      this.buildLeaf('transport.source', 'yahoo.chart.v8', 'Public Yahoo Finance chart endpoint'),
-      this.buildLeaf('transport.mode', getAutoRefreshSeconds() > 0 ? 'interval' : 'manual', 'Polling mode'),
       this.buildLeaf(
-        'transport.updated_at',
+        displayMode === 'stealth' ? 'transport.source' : 'Source',
+        'Yahoo Finance',
+        'Public Yahoo Finance chart endpoint',
+      ),
+      this.buildLeaf(
+        displayMode === 'stealth' ? 'transport.mode' : 'Refresh',
+        getAutoRefreshSeconds() > 0 ? `${getAutoRefreshSeconds()}s interval` : 'manual',
+        'Polling mode',
+      ),
+      this.buildLeaf(
+        displayMode === 'stealth' ? 'transport.updated_at' : 'Updated',
         this.snapshot.updatedAt ? formatDateTime(this.snapshot.updatedAt) : 'pending',
         'Last successful sync',
       ),
@@ -349,7 +360,11 @@ class RuntimeFeedProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
 
     if (this.snapshot.errorMessage) {
       section.children.push(
-        this.buildLeaf('transport.error', this.snapshot.errorMessage, 'Most recent upstream error'),
+        this.buildLeaf(
+          displayMode === 'stealth' ? 'transport.error' : 'Last error',
+          this.snapshot.errorMessage,
+          'Most recent upstream error',
+        ),
       );
     }
 
@@ -361,11 +376,17 @@ class RuntimeFeedProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
     definitions: readonly QuoteDefinition[],
   ): FeedNode {
     const section = new FeedNode(resolveSectionLabel(title), vscode.TreeItemCollapsibleState.Expanded);
-    section.description = `${definitions.length} feed${definitions.length === 1 ? '' : 's'}`;
+    section.description = getDisplayMode() === 'stealth'
+      ? `${definitions.length} feed${definitions.length === 1 ? '' : 's'}`
+      : `${definitions.length} item${definitions.length === 1 ? '' : 's'}`;
 
     if (definitions.length === 0) {
       section.children = [
-        this.buildLeaf('watch.empty', 'use Add Runtime Target', 'No user watch targets configured'),
+        this.buildLeaf(
+          getDisplayMode() === 'stealth' ? 'watch.empty' : 'No symbols yet',
+          getDisplayMode() === 'stealth' ? 'use Add Runtime Target' : 'Use Add Watch Symbol',
+          'No user watch targets configured',
+        ),
       ];
       return section;
     }
@@ -390,10 +411,11 @@ class RuntimeFeedProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
 
     const quote = this.snapshot.quotes.get(definition.symbol);
     const isSelected = this.selectionState.value?.symbol === definition.symbol;
-    item.label = isSelected ? `${resolveQuoteLabel(definition)}  [news]` : resolveQuoteLabel(definition);
+    item.label = resolveQuoteLabel(definition);
 
     if (!quote) {
-      item.description = `${isSelected ? 'selected | ' : ''}${this.isRefreshing ? 'syncing' : 'unavailable'}`;
+      item.iconPath = new vscode.ThemeIcon(this.isRefreshing ? 'sync' : 'circle-slash');
+      item.description = `${formatSelectionPrefix(isSelected)}${this.isRefreshing ? 'syncing' : 'unavailable'}`;
       item.tooltip = buildMissingTooltip(definition, this.snapshot.errorMessage);
       return item;
     }
@@ -402,8 +424,8 @@ class RuntimeFeedProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
       ? applyTransform(quote.regularMarketPrice, definition.transformPrice)
       : undefined;
     const percent = quote.regularMarketChangePercent;
-    const selectionPrefix = isSelected ? 'selected | ' : '';
-    item.description = `${selectionPrefix}${formatPrice(price, definition.decimals)} | ${formatSessionAndPercent(quote.marketState, percent)}`;
+    item.iconPath = resolveQuoteIcon(percent);
+    item.description = `${formatSelectionPrefix(isSelected)}${formatPrice(price, definition.decimals)} | ${formatQuoteMeta(quote.marketState, percent)}`;
     item.tooltip = buildQuoteTooltip(definition, quote, price, this.snapshot.updatedAt, isSelected);
     return item;
   }
@@ -507,27 +529,21 @@ class RuntimeNewsProvider implements vscode.TreeDataProvider<FeedNode>, vscode.D
 
   private buildRootNodes(): FeedNode[] {
     const selection = this.selectionState.value;
-    const summary = new FeedNode('selected.target', vscode.TreeItemCollapsibleState.None);
-    summary.description = selection ? `${selection.label} (${selection.symbol})` : 'none';
+    const displayMode = getDisplayMode();
+    const summary = new FeedNode(
+      selection
+        ? displayMode === 'stealth' ? 'selected.target' : selection.label
+        : displayMode === 'stealth' ? 'selected.target' : 'Select a symbol',
+      vscode.TreeItemCollapsibleState.None,
+    );
+    summary.description = buildNewsHeaderDescription(selection, this.snapshot, this.isRefreshing);
     summary.tooltip = selection
       ? `Current news target\nlabel: ${selection.label}\nsymbol: ${selection.symbol}\nquery: ${selection.query}`
       : 'Select a quote item to load stock news';
+    summary.iconPath = new vscode.ThemeIcon(this.snapshot.errorMessage ? 'warning' : this.isRefreshing ? 'sync' : 'symbol-event');
 
-    const status = new FeedNode('news.status', vscode.TreeItemCollapsibleState.None);
-    status.description = this.isRefreshing ? 'loading' : this.snapshot.errorMessage ? 'degraded' : 'ready';
-    status.tooltip = buildNewsStatusTooltip(this.snapshot, this.isRefreshing);
-
-    const updatedAt = new FeedNode('news.updated_at', vscode.TreeItemCollapsibleState.None);
-    updatedAt.description = this.snapshot.updatedAt ? formatDateTime(this.snapshot.updatedAt) : 'pending';
-    updatedAt.tooltip = 'Last successful news sync';
-
-    const hint = new FeedNode('news.hint', vscode.TreeItemCollapsibleState.None);
-    hint.description = 'Use the title action or click Market Quotes';
-    hint.tooltip = 'Use the Select Symbol action in this view title, or click an item in the Market Quotes view.';
-
-    const nodes = [summary, hint, status, updatedAt];
     const newsItems = this.buildNewsNodes(selection);
-    return [...nodes, ...newsItems];
+    return [summary, ...newsItems];
   }
 
   private buildNewsNodes(selection: NewsSelection | undefined): FeedNode[] {
@@ -661,8 +677,10 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      selectionState.set(selected);
-      await newsProvider.refresh();
+      const changed = selectionState.set(selected);
+      if (!changed) {
+        await newsProvider.refresh();
+      }
     }),
     vscode.commands.registerCommand('runtimeFeed.selectSymbol', async (node?: FeedNode) => {
       const selection = node?.selection;
@@ -670,8 +688,10 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      selectionState.set(selection);
-      await newsProvider.refresh();
+      const changed = selectionState.set(selection);
+      if (!changed) {
+        await newsProvider.refresh();
+      }
     }),
     vscode.commands.registerCommand('runtimeFeed.addWatchSymbol', async () => {
       const input = await vscode.window.showInputBox({
@@ -749,6 +769,16 @@ export function activate(context: vscode.ExtensionContext): void {
       );
       await feedProvider.refresh();
       await newsProvider.refresh();
+
+      const undo = await vscode.window.showInformationMessage(
+        `Removed ${entryToRemove} from watchlist.`,
+        'Undo',
+      );
+      if (undo === 'Undo') {
+        await configuration.update('watchlist', watchlist, vscode.ConfigurationTarget.Global);
+        await feedProvider.refresh();
+        await newsProvider.refresh();
+      }
     }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (!event.affectsConfiguration(CONFIG_NAMESPACE)) {
@@ -843,9 +873,45 @@ function formatPercent(percent: number | undefined): string {
   return `${prefix}${percent.toFixed(2)}%`;
 }
 
-function formatSessionAndPercent(session: string | undefined, percent: number | undefined): string {
+function formatQuoteMeta(session: string | undefined, percent: number | undefined): string {
   const sessionLabel = session?.trim() || 'ACTIVE';
-  return `${sessionLabel} ${formatPercent(percent)}`;
+  return `${formatPercent(percent)} | ${sessionLabel}`;
+}
+
+function formatSelectionPrefix(isSelected: boolean): string {
+  if (!isSelected) {
+    return '';
+  }
+
+  return getDisplayMode() === 'stealth' ? 'selected | ' : 'news target | ';
+}
+
+function resolveQuoteIcon(percent: number | undefined): vscode.ThemeIcon {
+  if (typeof percent !== 'number' || Number.isNaN(percent) || percent === 0) {
+    return new vscode.ThemeIcon('dash', new vscode.ThemeColor('foreground'));
+  }
+
+  return percent > 0
+    ? new vscode.ThemeIcon('arrow-up', new vscode.ThemeColor('charts.green'))
+    : new vscode.ThemeIcon('arrow-down', new vscode.ThemeColor('charts.red'));
+}
+
+function buildNewsHeaderDescription(
+  selection: NewsSelection | undefined,
+  snapshot: NewsSnapshot,
+  isRefreshing: boolean,
+): string {
+  if (!selection) {
+    return 'Click a quote or use Select News Symbol';
+  }
+
+  const status = isRefreshing
+    ? 'loading'
+    : snapshot.errorMessage
+      ? 'needs attention'
+      : `${snapshot.items.length} stor${snapshot.items.length === 1 ? 'y' : 'ies'}`;
+  const updatedAt = snapshot.updatedAt ? ` | ${formatDateTime(snapshot.updatedAt)}` : '';
+  return `${selection.symbol} | ${status}${updatedAt}`;
 }
 
 function formatDateTime(value: Date): string {
@@ -894,11 +960,11 @@ function resolveSectionLabel(section: Exclude<SectionKey, 'runtime.pipe'>): stri
   if (displayMode === 'explicit') {
     switch (section) {
       case 'core.indices':
-        return 'indices';
+        return 'Markets';
       case 'fx.bridge':
-        return 'fx';
+        return 'FX';
       case 'watch.targets':
-        return 'watchlist';
+        return 'Watchlist';
     }
   }
 
@@ -917,7 +983,7 @@ function resolveQuoteLabel(definition: QuoteDefinition): string {
 }
 
 function getDisplayMode(): DisplayMode {
-  return vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<DisplayMode>('displayMode', 'stealth');
+  return vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<DisplayMode>('displayMode', 'explicit');
 }
 
 function buildStatusTooltip(snapshot: FeedSnapshot, isRefreshing: boolean): string {
@@ -1070,17 +1136,17 @@ async function pickNewsTarget(
 }
 
 function getRequestTimeoutMs(): number {
-  return Math.max(
+  return Math.min(60000, Math.max(
     2000,
     vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<number>('requestTimeoutMs', 10000),
-  );
+  ));
 }
 
 function getAutoRefreshSeconds(): number {
-  return Math.max(
+  return Math.min(3600, Math.max(
     0,
     vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<number>('autoRefreshSeconds', 0),
-  );
+  ));
 }
 
 function sanitizeIdentifier(value: string): string {
@@ -1170,14 +1236,17 @@ async function fetchQuotes(symbols: readonly string[], timeoutMs: number): Promi
   const quoteMap = new Map<string, YahooQuote>();
   const failures: string[] = [];
 
-  for (const symbol of uniqueSymbols) {
-    try {
-      const quote = await fetchChartQuote(symbol, timeoutMs);
-      quoteMap.set(symbol, quote);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown chart upstream failure';
-      failures.push(`${symbol}: ${message}`);
-    }
+  for (let index = 0; index < uniqueSymbols.length; index += MAX_QUOTE_REQUESTS_PER_BATCH) {
+    const batch = uniqueSymbols.slice(index, index + MAX_QUOTE_REQUESTS_PER_BATCH);
+    await Promise.all(batch.map(async (symbol) => {
+      try {
+        const quote = await fetchChartQuote(symbol, timeoutMs);
+        quoteMap.set(symbol, quote);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown chart upstream failure';
+        failures.push(`${symbol}: ${message}`);
+      }
+    }));
   }
 
   if (quoteMap.size === 0 && failures.length > 0) {
@@ -1356,7 +1425,12 @@ async function searchSymbols(query: string, timeoutMs: number): Promise<YahooSea
 
 async function requestJson<T>(url: URL, timeoutMs: number): Promise<T> {
   const body = await requestText(url, timeoutMs, 'application/json');
-  return JSON.parse(body) as T;
+  try {
+    return JSON.parse(body) as T;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown JSON parse failure';
+    throw new Error(`Invalid JSON from ${url.hostname}: ${message}`);
+  }
 }
 
 async function requestText(url: URL, timeoutMs: number, accept = 'text/html,application/xhtml+xml'): Promise<string> {

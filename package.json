@@ -1,15 +1,16 @@
 {
   "name": "vscode-kospi",
-  "displayName": "vscode kospi",
-  "description": "VS Code 사이드바에서 주가와 지수를 텍스트로 보여주는 확장입니다.",
-  "version": "0.0.5",
+  "displayName": "KOSPI Stock Monitor",
+  "description": "KOSPI, KOSDAQ, NASDAQ, S&P 500, Dow, USD/KRW 환율과 관심 종목 뉴스/시세를 VS Code/Cursor 사이드바에서 보여주는 주식 모니터 확장입니다.",
+  "version": "0.0.7",
   "publisher": "taehyunkim3",
   "pricing": "Free",
   "engines": {
-    "vscode": "^1.105.0"
+    "vscode": "^1.104.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
   ],
   "activationEvents": [
     "onView:runtimeFeedView",
@@ -31,17 +32,53 @@
     "publish:ovsx": "npx ovsx publish"
   },
   "keywords": [
+    "cursor",
+    "cursor-extension",
     "vscode",
+    "vscode-extension",
     "sidebar",
     "monitor",
-    "market",
-    "fx",
     "stock",
+    "stocks",
+    "stock-market",
+    "ticker",
+    "quotes",
+    "watchlist",
+    "finance",
+    "market",
+    "financial-market",
+    "market-news",
+    "news",
+    "yahoo-finance",
     "kospi",
     "kosdaq",
+    "krx",
+    "korea-stock",
+    "korean-stock",
+    "korean-market",
+    "코스피",
+    "코스닥",
+    "국내주식",
+    "한국주식",
+    "주식",
+    "증시",
+    "시세",
+    "관심종목",
+    "환율",
+    "달러환율",
+    "fx",
+    "forex",
+    "exchange-rate",
+    "usd-krw",
+    "jpy-krw",
     "nasdaq",
+    "나스닥",
     "dowjones",
-    "s&p500"
+    "dow",
+    "s&p500",
+    "sp500",
+    "us-stock",
+    "미국주식"
   ],
   "author": "",
   "license": "ISC",
@@ -71,7 +108,7 @@
       "activitybar": [
         {
           "id": "vscodeKospi",
-          "title": "vscode kospi",
+          "title": "KOSPI",
           "icon": "media/icon.svg"
         }
       ]
@@ -91,12 +128,12 @@
     "commands": [
       {
         "command": "runtimeFeed.refresh",
-        "title": "Refresh vscode stock",
+        "title": "Refresh Market Quotes",
         "icon": "$(refresh)"
       },
       {
         "command": "runtimeFeed.addWatchSymbol",
-        "title": "Register Relay Target",
+        "title": "Add Watch Symbol",
         "icon": "$(add)"
       },
       {
@@ -111,7 +148,7 @@
       },
       {
         "command": "runtimeFeed.removeWatchSymbol",
-        "title": "Remove Relay Target",
+        "title": "Remove Watch Symbol",
         "icon": "$(trash)"
       },
       {
@@ -156,7 +193,7 @@
       ]
     },
     "configuration": {
-      "title": "vscode stock",
+      "title": "KOSPI Stock Monitor",
       "properties": {
         "runtimeFeed.watchlist": {
           "type": "array",
@@ -168,31 +205,37 @@
         },
         "runtimeFeed.displayMode": {
           "type": "string",
-          "default": "stealth",
+          "default": "explicit",
           "enum": [
-            "stealth",
-            "explicit"
+            "explicit",
+            "stealth"
           ],
-          "markdownDescription": "Controls whether labels look like a generic operations panel (`stealth`) or show direct market names (`explicit`)."
+          "enumDescriptions": [
+            "Show direct market labels such as Markets, FX, and Watchlist.",
+            "Show generic labels that make the sidebar look less like a stock monitor."
+          ],
+          "markdownDescription": "Controls whether labels show direct market names (`explicit`) or generic operations-style names (`stealth`)."
         },
         "runtimeFeed.autoRefreshSeconds": {
           "type": "number",
           "default": 0,
           "minimum": 0,
-          "markdownDescription": "Automatic refresh interval in seconds. `0` disables polling."
+          "maximum": 3600,
+          "markdownDescription": "Automatic refresh interval in seconds. `0` disables polling. Values above 3600 are capped by the extension."
         },
         "runtimeFeed.requestTimeoutMs": {
           "type": "number",
           "default": 10000,
           "minimum": 2000,
-          "markdownDescription": "HTTP timeout for the upstream quote request."
+          "maximum": 60000,
+          "markdownDescription": "HTTP timeout for upstream quote and news requests. Values above 60000 are capped by the extension."
         }
       }
     }
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
-    "@types/vscode": "^1.105.0",
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.104.0",
     "@vscode/vsce": "^3.7.1",
     "typescript": "^6.0.2"
   }

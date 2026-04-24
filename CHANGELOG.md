@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.0.7
+
+- Polished sidebar labels, command titles, and default display mode for clearer first-run UX
+- Simplified the news view header so articles appear higher in the sidebar
+- Added quote direction icons and watchlist removal Undo
+- Reduced duplicate news refreshes after changing the selected symbol
+- Batched quote refresh requests to improve perceived refresh speed with watchlists
+- Expanded marketplace search metadata with stock, index, exchange-rate, news, Korean-market, and Cursor keywords
+- Updated display name and description to improve discoverability
+
+## 0.0.6
+
+- Lowered the VS Code engine requirement to `^1.104.0` for Cursor 3.1.15 compatibility
+- Bumped release metadata to `0.0.6`
+
 ## 0.0.5
 
 - Lowered the minimum VS Code engine requirement to `^1.105.0` for Cursor compatibility
